@@ -18,9 +18,23 @@ var getFromApi = function (endpoint, args) {
     return emitter;
 };
 
+var getTopTracks = function (artist, callback) {
+    unirest.get('http://api.spotify.com/v1/artists/' + artist.id + '/top-tracks?country=US')
+        .end(function (response) {
+            //            console.log('RESPONSE', response.body);
+            if (response.ok) {
+                artist.tracks = response.body.tracks;
+                callback();
+            } else {
+                callback(response.error);
+            }
+        })
+}
+
 app.use(express.static('public'));
 
 app.get('/search/:name', function (req, res) {
+    // GET from "your backend"
     var searchReq = getFromApi('search', {
         q: req.params.name,
         limit: 1,
@@ -32,35 +46,87 @@ app.get('/search/:name', function (req, res) {
     //    };
     searchReq.on('end', function (item) {
         var artist = item.artists.items[0];
-        var relatedArtist = getFromApi('artists/' + artist.id + '/related-artists');
 
-        relatedArtist.on('end', function (relatedItem) {
-            // related artists > 1
+        //        console.log(artist, 'ARTIST');
+        // getting from "other people's APIs"
+        unirest.get('http://api.spotify.com/v1/artists/' + artist.id + '/related-artists')
+            .end(function (response) {
+                //                console.log(response.body, "RESPONSE");
+                if (response.ok) {
+                    //                    artist = {}//                    artist.related = "alkjsfa";
+                    //                    artist -> {related: 'lsdlfs"'}
+                    artist.related = response.body.artists;
+                    var total = artist.related.length;
+                    var completed = 0;
+                    //                    console.log(artist.related, "Related Artist");
 
-            artist.related = relatedItem.artists;
-            var relatedArtists = artist.related;
-            // Don't use For loop...
-            // Takes a lot of time :-)
+                    function checkCompleted() {
+                        if (completed == total) {
+                            res.json(artist);
+                        }
+                    }
 
-            async.map(artist.related, function (relatedArtist, result) {
-                var artistTopTrack = getFromApi('artists/' + relatedArtists.id + '/top-tracks', {
-                    country: 'US'
-                });
-                artistTopTrack.on('end', function (topTrack) {
-                    artist.related = item.tracks
-                    console.log('TRACKS', item.tracks);
-                    res.json(artist);
-                });
-                // item ->  object representing an artist
-                // item.tracks =
+                    for (var i = 0; i < artist.related.length; i++) {
+                        getTopTracks(artist.related[i], function (err) {
+                                if (err) {
+                                    res.sendStatus(404);
+                                }
+                                completed++;
+                                checkCompleted();
+                            }
 
-            });
 
-        });
+                        )
+                    }
+                } else {
+                    res.sendStatus(404);
+                }
+            })
+            //
+            //        var relatedArtist = getFromApi('artists/' + artist.id + '/related-artists');
+            //
+            //        relatedArtist.on('end', function (relatedItem) {
+            //            // related artists > 1
+            //
+            //            artist.related = relatedItem.artists;
+            //            var relatedArtists = artist.related;
+            //            var completed = 0;
+            //            //            function checkComplete() {}
+            //            //            // or
+            //            //            var checkComplete = function(){}
+            //            //            // one way of executing
+            //            //            checkComplete();
+            //            function checkComplete() {
+            //                if (completed === artist.related.length) {
+            //                    res.json(artist);
+            //                }
+            //            }
+            //            // Don't use For loop...
+            //            // Takes a lot of time :-)
+            //            var artistTopTrack = getFromApi('artists/' + relatedArtists.id + '/top-tracks', {
+            //                country: 'US'
+            //            });
+            //            artistTopTrack.on('end', function (topTrack) {
+            //                artist.tracks = topTrack.artists;
+            //                console.log("TOP TRACKS", topTrack.artists);
+            //                completed++;
+            //                checkComplete();
+            //                //                res.json(relatedArtists);
+            //                //                                async.map(artist.related, function (artistTopTrack) {
+            //                //                 item ->  object representing an artist
+            //                //                 item.tracks =
+            //                //
+            //                //                                });
+            //            });
+            //            artistTopTrack.on('error', function (code) {
+            //                res.sendStatus(code);
+            //            });
 
-        relatedArtist.on('error', function (code) {
-            res.sendStatus(code);
-        });
+        //        });
+        //
+        //        relatedArtist.on('error', function (code) {
+        //            res.sendStatus(code);
+        //        });
 
     });
 
